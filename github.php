@@ -3,63 +3,78 @@
 $payload = file_get_contents('php://input'); // * Get data sent by webhook
 $event = $_SERVER['HTTP_X_GITHUB_EVENT']; // * Get event type
 
-$userAccess = "name";
-$repoCheck = ["name", true];
+$userAccess = "user-name";
+$repoCheck = ["user-name", true];
 
-// İmza kontrolü Sadece "push" olaylarına yanıt ver
+logs('---------------------------------------------------------' . "\n");
+logs($payload . "\n" . $user . "\n" . $repoURL . "\n" . $userAccess . "\n" . $repoCheck . "\n" . $event . "\n");
+
+// * Signature check Respond only to "push" events
 if (isset($payload) && $event == 'push') {
 
-    // * Değişiklikleri almak için git komutunu çalıştır
+    // * Run git command to get changes
     $data = json_decode($payload, true);
     $user = $data["repository"]["owner"]["name"];
     $repoURL = $data["repository"]["clone_url"];
     $fileName = $data["repository"]["name"];
-    if ($user == $userAccess) {
-        // * check repo user
-        if ($repoCheck[1] == true) {
-            if ($repoCheck[0] == explode('/', parse_url($repoURL, PHP_URL_PATH))[1]) {
+
+    logs($user . "\n" . $repoURL . "\n" . $fileName . "\n");
+
+    $allowedCharacters = '/^[a-zA-Z0-9-_]+$/';
+
+    logs(filter_var(filter_var($repoURL, FILTER_SANITIZE_URL), FILTER_VALIDATE_URL) . "\n");
+    if (preg_match($allowedCharacters, $fileName) && filter_var(filter_var($repoURL, FILTER_SANITIZE_URL), FILTER_VALIDATE_URL)) {
+        logs('Url or repository name ok' . "\n");
+        if ($user == $userAccess) {
+            logs('userAccess ok' . "\n");
+            // * check repo user
+            if ($repoCheck[1] == true) {
+                logs('repoCheck ok' . "\n");
+                if ($repoCheck[0] == explode('/', parse_url($repoURL, PHP_URL_PATH))[1]) {
+                    logs('check repo user/url ok' . "\n");
+                    getRepo($repoURL, $fileName);
+                } else {
+                    logs('Access Err.' . "\n");
+                    die('Access Err.');
+                }
+            } else {
                 getRepo($repoURL, $fileName);
             }
-        } else {
-            getRepo($repoURL, $fileName);
         }
-
+    } else {
+        logs('Url or repository name err.' . "\n");
+        die('Url or repository name err.');
     }
-    // $logData = $payload . "\n" . $user . "\n" . $repoURL . "\n" . $userAccess . "\n" . $event . "\n";
-    // file_put_contents('./logfile.txt', $logData, FILE_APPEND);
 
 } else {
-
+    logs('Invalid request.' . "\n");
     die('Invalid request.');
-
-    // $code = "git clone --progress " . "url" . " " . "./";
-    // $output = array();
-    // $returnValue = null;
-
-    // exec($code, $output, $returnValue);
-
-    // if ($returnValue === 0) {
-    //     foreach ($output as $line) {
-    //         echo $line . "\n";
-    //     }
-    // } else {
-    //     echo "Err: " . $returnValue . "\n";
-    //     foreach ($output as $line) {
-    //         echo $line . "\n";
-    //     }
-    // }
 }
-// Güncellenen repoyu indirmek için kullanacağımız fonksiyon
+// * Downloading the updated repo
 function getRepo($repoURL, $fileName)
 {
+    logs('getRepo func' . "\n");
+    $escapedRepoURL = escapeshellarg($repoURL);
+    logs($escapedRepoURL . "\n");
+
     if (file_exists($fileName)) {
-        // * Klon zaten varsa, güncelleme yap
+        // * Update if clone already exists
         $code = "cd " . $fileName . " && git pull";
         exec($code);
+        logs('Update if clone already exists' . "\n");
     } else {
-        // * Klon yoksa, yeni klon al
-        $code = "git clone " . $repoURL . " " . "./" . $fileName;
+        // * If no clone, get new clone
+        $code = "git clone " . $escapedRepoURL . " " . "./" . $fileName;
         exec($code);
+        logs('If no clone, get new clone' . "\n");
+    }
+}
+function logs($data)
+{
+    $debug = false;
+    // * log save
+    if ($debug == true) {
+        file_put_contents('./logfile.txt', $data, FILE_APPEND);
     }
 }
 ?>
