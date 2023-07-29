@@ -5,6 +5,7 @@ $event = $_SERVER['HTTP_X_GITHUB_EVENT']; // * Get event type
 
 $userAccess = "user-name";
 $repoCheck = ["user-name", true];
+$cron = [true, "https://example.com"];
 
 logs('---------------------------------------------------------' . "\n");
 logs($payload . "\n" . $user . "\n" . $repoURL . "\n" . $userAccess . "\n" . $repoCheck . "\n" . $event . "\n");
@@ -32,13 +33,13 @@ if (isset($payload) && $event == 'push') {
                 logs('repoCheck ok' . "\n");
                 if ($repoCheck[0] == explode('/', parse_url($repoURL, PHP_URL_PATH))[1]) {
                     logs('check repo user/url ok' . "\n");
-                    getRepo($repoURL, $fileName);
+                    getRepo($repoURL, $fileName, $cron);
                 } else {
                     logs('Access Err.' . "\n");
                     die('Access Err.');
                 }
             } else {
-                getRepo($repoURL, $fileName);
+                getRepo($repoURL, $fileName, $cron);
             }
         }
     } else {
@@ -51,7 +52,7 @@ if (isset($payload) && $event == 'push') {
     die('Invalid request.');
 }
 // * Downloading the updated repo
-function getRepo($repoURL, $fileName)
+function getRepo($repoURL, $fileName, $cron)
 {
     logs('getRepo func' . "\n");
     $escapedRepoURL = escapeshellarg($repoURL);
@@ -67,6 +68,11 @@ function getRepo($repoURL, $fileName)
         $code = "git clone " . $escapedRepoURL . " " . "./" . $fileName;
         exec($code);
         logs('If no clone, get new clone' . "\n");
+    }
+
+    // * cron
+    if ($cron[0]) {
+        file_get_contents($cron[1]);
     }
 }
 function logs($data)
