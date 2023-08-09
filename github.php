@@ -2,10 +2,16 @@
 
 $payload = file_get_contents('php://input'); // * Get data sent by webhook
 $event = $_SERVER['HTTP_X_GITHUB_EVENT']; // * Get event type
+$incomingSignature = $_SERVER['HTTP_X_HUB_SIGNATURE'];
 
 $userAccess = "user-name";
 $repoCheck = ["user-name", true];
 $cron = [true, "https://example.com"];
+$secret = [true, "YourSecretKey"];
+
+$fileDir = "./";
+
+$calculatedSignature = 'sha1=' . hash_hmac('sha1', $payload, $secret[1]);
 
 logs('---------------------------------------------------------' . "\n");
 logs($payload . "\n" . $user . "\n" . $repoURL . "\n" . $userAccess . "\n" . $repoCheck . "\n" . $event . "\n");
@@ -32,14 +38,25 @@ if (isset($payload) && $event == 'push') {
             if ($repoCheck[1] == true) {
                 logs('repoCheck ok' . "\n");
                 if ($repoCheck[0] == explode('/', parse_url($repoURL, PHP_URL_PATH))[1]) {
-                    logs('check repo user/url ok' . "\n");
-                    getRepo($repoURL, $fileName, $cron);
+                    //* Signature Check
+                    if ($secret[0]) {
+                        if (hash_equals($calculatedSignature, $incomingSignature)) {
+                            logs('check repo user/url ok' . "\n");
+                            getRepo($repoURL, $fileName, $cron, $fileDir);
+                        } else {
+                            logs('Invalid secret key.' . "\n");
+                            die('Invalid secret key.');
+                        }
+                    } else {
+                        logs('check repo user/url ok' . "\n");
+                        getRepo($repoURL, $fileName, $cron, $fileDir);
+                    }
                 } else {
                     logs('Access Err.' . "\n");
                     die('Access Err.');
                 }
             } else {
-                getRepo($repoURL, $fileName, $cron);
+                getRepo($repoURL, $fileName, $cron, $fileDir);
             }
         }
     } else {
@@ -52,10 +69,10 @@ if (isset($payload) && $event == 'push') {
     die('Invalid request.');
 }
 // * Downloading the updated repo
-function getRepo($repoURL, $fileName, $cron)
+function getRepo($repoURL, $fileName, $cron, $fileDir)
 {
     logs('getRepo func' . "\n");
-    $escapedRepoURL = escapeshellarg($repoURL);
+    $escapedRepoURL = escapeshellarg(escapeshellcmd($repoURL));
     logs($escapedRepoURL . "\n");
 
     if (file_exists($fileName)) {
@@ -65,7 +82,7 @@ function getRepo($repoURL, $fileName, $cron)
         logs('Update if clone already exists' . "\n");
     } else {
         // * If no clone, get new clone
-        $code = "git clone " . $escapedRepoURL . " " . "./" . $fileName;
+        $code = "git clone " . $escapedRepoURL . " " . $fileDir . $fileName;
         exec($code);
         logs('If no clone, get new clone' . "\n");
     }
