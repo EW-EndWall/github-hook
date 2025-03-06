@@ -15,7 +15,6 @@ $cron = [true, "https://example.com", "YourSecretKey"];
 $calculatedSignature = 'sha1=' . hash_hmac('sha1', $payload, $secret[1]);
 // * log started
 logs('---------------------------------------------------------' . "\n", $debug);
-logs($payload . "\n" . $user . "\n" . $repoURL . "\n" . $userAccess . "\n" . $repoCheck . "\n" . $event . "\n", $debug);
 // * Signature check Respond only to "push" events
 if (isset($payload) && $event == 'push') {
     // * Run git command to get changes
