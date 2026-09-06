@@ -75,7 +75,7 @@ function getRepo($repoURL, $fileName, $cron, $fileDir, $debug)
     // * process log
     logs($escapedRepoURL . "\n", $debug);
     // * check file
-    if (file_exists($fileName)) {
+    if (file_exists($fileDir . $fileName)) {
         // * Update if clone already exists
         $code = "cd " . $fileDir . $fileName . " && git pull";
         exec($code);
