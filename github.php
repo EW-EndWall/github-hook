@@ -22,6 +22,10 @@ if (isset($payload) && $event == 'push') {
     $user = $data["repository"]["owner"]["name"];
     $repoURL = $data["repository"]["clone_url"];
     $fileName = $data["repository"]["name"];
+    $branch = preg_replace('#^refs/heads/#', '', $data["ref"] ?? 'main');
+    if (!preg_match('/^[a-zA-Z0-9._\/-]+$/', $branch)) {
+        die('Invalid branch.');
+    }
     // * process log
     logs($user . "\n" . $repoURL . "\n" . $fileName . "\n", $debug);
     // * regex
@@ -40,21 +44,21 @@ if (isset($payload) && $event == 'push') {
                     if ($secret[0]) {
                         if (hash_equals($calculatedSignature, $incomingSignature)) {
                             logs('check repo user/url ok' . "\n", $debug);
-                            getRepo($repoURL, $fileName, $cron, $fileDir, $debug);
+                            getRepo($repoURL, $fileName, $cron, $fileDir, $debug, $branch);
                         } else {
                             logs('Invalid secret key.' . "\n", $debug);
                             die('Invalid secret key.');
                         }
                     } else {
                         logs('check repo user/url ok' . "\n", $debug);
-                        getRepo($repoURL, $fileName, $cron, $fileDir, $debug);
+                        getRepo($repoURL, $fileName, $cron, $fileDir, $debug, $branch);
                     }
                 } else {
                     logs('Access Err.' . "\n", $debug);
                     die('Access Err.');
                 }
             } else {
-                getRepo($repoURL, $fileName, $cron, $fileDir, $debug);
+                getRepo($repoURL, $fileName, $cron, $fileDir, $debug, $branch);
             }
         }
     } else {
@@ -66,48 +70,52 @@ if (isset($payload) && $event == 'push') {
     die('Invalid request.');
 }
 // * Downloading the updated repo
-function getRepo($repoURL, $fileName, $cron, $fileDir, $debug)
+function getRepo($repoURL, $fileName, $cron, $fileDir, $debug, $branch)
 {
     // * process log
     logs('getRepo func' . "\n", $debug);
     // * get repo url
-    $escapedRepoURL = escapeshellarg(escapeshellcmd($repoURL));
+    $escapedRepoURL = escapeshellarg($repoURL);
     // * process log
     logs($escapedRepoURL . "\n", $debug);
     // * check file
-    if (file_exists($fileDir . $fileName)) {
-        // * Update if clone already exists
-        $code = "cd " . $fileDir . $fileName . " && git pull";
-        exec($code);
-        logs('Update if clone already exists' . "\n", $debug);
+    $baseDir = realpath($fileDir);
+    if ($baseDir === false) {
+        mkdir($fileDir, 0755, true);
+        $baseDir = realpath($fileDir);
+    }
+    $repoPath = $baseDir . '/' . $fileName;
+    $escapedRepoPath = escapeshellarg($repoPath);
+    $escapedBranch = escapeshellarg($branch);
+
+    $git = 'HOME=/tmp git -c safe.directory=' . $escapedRepoPath;
+
+    if (is_dir($repoPath . '/.git')) {
+        $code = "cd {$escapedRepoPath} && "
+            . "{$git} fetch origin {$escapedBranch} 2>&1 && "
+            . "{$git} reset --hard FETCH_HEAD 2>&1 && "
+            . "{$git} clean -fd 2>&1";
+        exec($code, $output, $result);
+        logs('Update (Result: ' . $result . '): ' . implode("\n", $output) . "\n", $debug);
     } else {
-        // * If no clone, get new clone
-        $code = "git clone " . $escapedRepoURL . " " . $fileDir . $fileName;
-        exec($code);
-        logs('If no clone, get new clone' . "\n", $debug);
+        $code = "HOME=/tmp git clone -b {$escapedBranch} {$escapedRepoURL} {$escapedRepoPath} 2>&1";
+        exec($code, $output, $result);
+        logs('Clone (Result: ' . $result . '): ' . implode("\n", $output) . "\n", $debug);
+    }
+
+    if ($result !== 0) {
+        return;
     }
     // * cron
     if ($cron[0]) {
         $ch = curl_init($cron[1]);
-        // *Header settigs
-        $headers = [
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
             "Authorization: Bearer $cron[2]",
             "Content-Type: application/json",
-        ];
-        // * Set cURL options
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        // * Make the request and get the response
+        ]);
         $response = curl_exec($ch);
-        // * cURL is err
-        if (curl_errno($ch)) {
-            // echo "Error:" . curl_error($ch);
-            echo "Error.";
-        } else {
-            // * response
-            echo $response;
-        }
-        // * cURL session close
+        echo curl_errno($ch) ? "Error." : $response;
         curl_close($ch);
     }
 }
